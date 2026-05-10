@@ -1,4 +1,4 @@
-Feature: Admin User Search
+Feature: Admin Search Function
   As an Admin user
   I want to search for users by their role
   So that I can manage system users efficiently

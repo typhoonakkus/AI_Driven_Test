@@ -5,7 +5,7 @@ import os
 FEATURE_FILE = os.path.join(os.path.dirname(__file__), "../features/admin_search.feature")
 
 @scenario(FEATURE_FILE, 'Search users with different roles')
-def test_search_bdd():
+def test_differentUser_search():
     """Bu fonksiyon boş kalır, @scenario dekoratörü işi yapar."""
     pass
 
