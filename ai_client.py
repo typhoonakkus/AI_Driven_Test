@@ -1,7 +1,9 @@
 import os
 import allure
+import json
 from openai import OpenAI
 from dotenv import load_dotenv
+from vector_store import TestMemory
 
 load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -39,12 +41,20 @@ def get_healed_selector(broken_selector, error_message, html_content):
         pass # Allure kurulu olmayan ortamlar için koruma
     # ------------------------
 
-    return clean_selector
-    #return "button#hatalıId" # Vision AI devreye girmesi için
+    return clean_selector    
 
 def get_vision_analysis(broken_selector, base64_image):
-    prompt = f"Şu selector çalışmıyor: {broken_selector}. Ekran görüntüsüne bakarak bu butonun yeni selector'ını bul. Sadece selector'ı döndür."
+    prompt = f"""
+    GÖREV: Web otomasyonunda bozulan bir selector'ı onar.
+    BOZUK SELECTOR: {broken_selector}
     
+    TALİMAT:
+    1. Ekran görüntüsüne bak ve bu elementin yeni CSS selector'ını bul.
+    2. SADECE selector metnini döndür (Örn: #username veya input[name='user']).
+    3. ASLA açıklama yapma, "Özür dilerim", "Şunu deneyin" gibi cümleler kurma.
+    4. Selector'ı ``` (backtick) içine alma, düz metin olarak ver.
+    5. Eğer bulamazsan sadece 'NOT_FOUND' yaz.
+    """
     response = client.chat.completions.create(
         model="gpt-4o",
         messages=[
@@ -85,28 +95,70 @@ def get_vision_analysis(broken_selector, base64_image):
     
     return clean_selector  
 
-def analyze_failure(error_message, logs=None):
+memory = TestMemory()
+
+def analyze_failure(error_message, test_id="Unknown_Test"):   
+    
+    # 1. HAFIZADAN (VECTOR DB) BENZER HATALARI GETİR
+    past_experiences = ""
+    try:
+        clean_query = error_message.split('\n')[0][:200]
+        similar_cases = memory.get_similar_cases(clean_query, n=2)
+        # Debug için terminale bas:
+        print(f"DEBUG - Veritabanından gelen ham veri: {similar_cases}")
+        
+        if similar_cases and len(similar_cases) > 0 and len(similar_cases[0]) > 0:
+            past_experiences = "\n### 🚨 GEÇMİŞ HAFIZA KAYITLARI (RAG) 🚨\n"
+            for doc in similar_cases[0]:
+                past_experiences += f"- {doc}\n"
+            past_experiences += "----------------------------------------------------------\n"
+        else:
+            print("DEBUG - Benzer hata bulunamadı.")
+            past_experiences = "\n(Bu hata bu test özelinde ilk kez alınıyor olabilir, hafızada benzer bir kayıt yok.)\n"
+    except Exception as e:
+        print(f"Hafıza sorgulama hatası: {e}")
+
+    # 2. PROMPT'U GEÇMİŞ BİLGİLERLE ZENGİNLEŞTİR
     prompt = f"""
-    Sen bir Senior QA Automation Lead'sin. Test sonucunu analiz et:
-    Hata Mesajı: {error_message}
+    Sen bir Senior QA Automation Lead'sin. Aşağıdaki hatayı 'Analiz Protokolü'ne göre incele:
+    **Mevcut Hata Mesajı:** 
+    {error_message}
 
-    KARAR ALMA REHBERİ:
-    1. Eğer hata 'AssertionError' ise ve beklenen/gelen değerler farklıysa, bu bir 'BUG' dır. Asla selector hatası deme!
-    2. Eğer hata 'Timeout' ise , 'ENVIRONMENT' hatasıdır.
-    3. Eğer hata 'NoSuchElement' ise ,'SELECTOR'hatasıdır.
-    4. Eğer hata 'Server Error' içeriyorsa 'BACKEND ISSUE'dur.
-    5. Eğer hata rastgele zamanlarda (timeout vb.) geliyorsa 'FLAKY' ihtimalini değerlendir.
-    6. Eğer hata 'Element not interactable' ise sayfa yüklenme hızıyla ilgili bir 'ENVIRONMENTAL FLAKY' durumu olabilir.
+    **Geçmiş Hafıza Kayıtları:** 
+    {past_experiences}    
 
-    Analizini bu mantıkla yap ve şu formatta ver:
+    ANALİZ PROTOKOLÜ (Sırasıyla Uygula):
+    1. ÖNCELİK (İş Mantığı): Eğer loglarda bir 'Assertion' (beklenen/gelen uyuşmazlığı) varsa, bu bir BUG'dır. Diğer teknik logları (wait, timeout) gürültü olarak kabul et.
+    2. ÖNCELİK (Yapısal): Element bulunamıyorsa (NoSuchElement/Visible), selector veya DOM yapısına odaklan.
+    3. ÖNCELİK (Çevresel): Sadece zaman aşımı varsa ENVIRONMENT/FLAKY olarak değerlendir.
+    4. ÖNCELİK (Backend): Eğer hata 'Server Error' içeriyorsa 'BACKEND ISSUE'dur.   
+    5. Eğer hata 'Element not interactable' ise sayfa yüklenme hızıyla ilgili bir 'ENVIRONMENTAL FLAKY' durumu olabilir.
+    6. [Geçmiş Hafıza Kayıtları] kısmını oku. Benzer alanda aynı hata türüne yakın benzerlik varsa analizinde mutlaka 'Bu hata daha önce de şu tarihlerde ve şu şekilde yaşanmıştı' gibi bir karşılaştırma yaparak yeni analizinle geçmiş tecrübe arasında bağ kur.
+
+    Analizini şu formatta ver:
     - **Hata Sınıflandırması:** (BUG / ENVIRONMENT / SELECTOR / BACKEND ISSUE / FLAKY)
-    - **Kök Neden:** (Neden hata aldık? Sen sistem testçisisin hata detayına odaklan ve açıkla.)
-    - **Çözüm Önerisi:** (Yazılımcıya mı yoksa test verisine mi gidilmeli? Yoksa bu bir Flaky testmidir)
+    - **Kök Neden:** (Teknik detaylara odaklanarak açıkla)
+    - **Hafıza Sorgu Sonucu (RAG):** (Geçmişte bu hata var mıydı? Kaç kere olmuş? Geçmişteki yorumla şimdiki arasındaki fark nedir? MUTLAKA BELİRT)
+    - **Çözüm Önerisi:** (Kalıcı çözüm için aksiyon planı)
     """
 
     response = client.chat.completions.create(
         model="gpt-4o",
-        messages=[{"role": "user", "content": prompt}]
+        messages=[{"role": "system", "content": "Sen tecrübeli bir QA Lead'sin."},
+                  {"role": "user", "content": prompt}]
     )
 
-    return response.choices[0].message.content.strip()
+    ai_analysis = response.choices[0].message.content.strip()
+
+    # 3. ANALİZİ DB YE KAYDEDER
+    try:
+        memory.save_failure(
+            test_id=test_id,
+            error_msg=error_message[:500],
+            ai_analysis=ai_analysis
+        )
+        print(f"✅ [MEMORY UPDATED]: {test_id} için yeni analiz kaydedildi.")
+    except Exception as e:
+        print(f"❌ [MEMORY ERROR]: Kayıt başarısız: {e}")
+
+    return ai_analysis

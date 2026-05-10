@@ -63,17 +63,18 @@ pytest --alluredir=allure-result
 Ortam Bazlı Koşum:
 pytest --env=UAT --alluredir=allure-results
 
+Paralel Koşum (2 Thread):
+pytest -n 2
+
 Farklı Browserlarda koşum:
 Chromium: pytest --browser chromium --alluredir=allure-results
 Firefox: pytest --browser firefox --alluredir=allure-results
 Edge: pytest --browser webkit --alluredir=allure-results
 
+## 📊 Test Raporları
 Raporu Görüntüleme:
 allure serve allure-results
-
-Paralel Koşum (2 Thread):
-pytest -n 2
-
+Allure Raporu: [Tıkla ve Git](http://localhost:5050/allure-docker-service/projects/default/reports/latest/index.html)
 
 
 🧠 AI Self-Healing Nasıl Çalışır?

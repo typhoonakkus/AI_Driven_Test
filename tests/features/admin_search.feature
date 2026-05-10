@@ -13,5 +13,5 @@ Scenario Outline: Search users with different roles
     Examples:
       | role    | expected_username           |
       | Admin   | Admin                       |
-      | ESS     | Alfredo_Manriquez@demo.com  |
+      | ESS     | Alfredo  |
    

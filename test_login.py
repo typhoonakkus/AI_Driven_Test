@@ -1,5 +1,5 @@
 from playwright.sync_api import sync_playwright
-from base_page import BasePage
+from tests.base_page import BasePage
 
 def test_orange_hrm_login():
     with sync_playwright() as p:

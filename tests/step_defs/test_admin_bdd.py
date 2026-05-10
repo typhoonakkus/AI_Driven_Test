@@ -1,5 +1,5 @@
 from pytest_bdd import scenario, given, when, then, parsers
-from base_page import BasePage
+from tests.base_page import BasePage
 import os
 
 FEATURE_FILE = os.path.join(os.path.dirname(__file__), "../features/admin_search.feature")

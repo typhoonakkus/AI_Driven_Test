@@ -19,7 +19,8 @@ class BasePage:
             raise Exception("HATA: .env dosyasında BASE_URL tanımlanmamış!")
 
     def smart_fill(self, selector, value):
-        try:            
+        try:   
+            self.page.wait_for_selector(selector, state="visible", timeout=5000)         
             self.page.fill(selector, value, timeout=3000)
         except Exception as e1:
             print(f"⚠️ '{selector}' alanına yazılamadı. HTML analizi deneniyor...")  
@@ -51,7 +52,8 @@ class BasePage:
                     raise                     
 
     def smart_click(self, selector):
-        try:            
+        try:        
+            self.page.wait_for_selector(selector, state="visible", timeout=5000)    
             self.page.click(selector, timeout=3000)
             print(f"✅ Click başarılı : {selector}")
         except Exception as e1:
@@ -83,8 +85,7 @@ class BasePage:
     def smart_dropdown(self, dropdown_selector, option_text):
         try:            
             print(f"Opening dropdown: {dropdown_selector}")
-            self.smart_click(dropdown_selector)
-            self.page.wait_for_timeout(500)             
+            self.smart_click(dropdown_selector)                        
             
             option_locator = f"//*[contains(text(), '{option_text}')]"
             try:                
